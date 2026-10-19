@@ -1,0 +1,8 @@
+# 本地依赖（测试/开发用；发布包不包含 node_modules）
+node_modules/
+
+# 本地打包产物
+*.tgz
+
+# 本地项目数据（记忆/运行态，不发布）
+.workbuddy-ai/

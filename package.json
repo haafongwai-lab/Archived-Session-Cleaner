@@ -1,0 +1,39 @@
+{
+  "name": "dsh-archived-session-cleaner",
+  "version": "0.3.1",
+  "description": "Archived Session Cleaner for DeepSeek Harness (DSH): scan, filter, back up and safely delete archived sessions.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "RESEARCH.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build-lib.mjs",
+    "test": "node test/run-tests.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  },
+  "engines": {
+    "dsh": ">=0.1.0-rc.6 <0.3.0"
+  },
+  "license": "MIT"
+}

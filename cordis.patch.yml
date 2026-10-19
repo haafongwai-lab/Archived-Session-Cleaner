@@ -1,0 +1,19 @@
+# dsh-archived-session-cleaner 组合包层（bundle layer）
+#
+# 安装进 profile 时由 dsh plugin --profile web add 自动应用。
+# 宿主行按包名解析（Node module resolution）；客户端半由 package.json 的
+# dsh.client（platform: web）+ exports["./client"] 声明，无需在此声明。
+#
+# 层级提示：后应用的层按行胜出，patch 会整行替换 config —— 如需覆盖默认值，
+# 请重述所有键。
+
+- insert:
+    - id: dsh-archived-session-cleaner
+      name: dsh-archived-session-cleaner
+      config:
+        # 会话日志根目录（JSONL provider 的 config.root）。留空 = 自动探测。
+        sessionRoot: ''
+        # 删除前必须成功导出并校验备份。
+        requireBackup: true
+        # 单批删除上限（1-200）。
+        maxBatch: 50

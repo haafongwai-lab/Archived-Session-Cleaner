@@ -1,0 +1,14 @@
+# 本地开发 overlay 示例（不安装到 profile，直接 --patch 加载）
+#
+# 用法（在 deepseek-harness 源码检出根目录）：
+#   pnpm dsh web --patch /absolute/path/to/Archived Session Cleaner/examples/cordis.patch.local.yml
+#
+# 把下面的 /absolute/path/to 换成本插件目录的绝对路径。
+
+- insert:
+    - id: dsh-archived-session-cleaner
+      name: '/absolute/path/to/Archived Session Cleaner/src/index.js'
+      config:
+        sessionRoot: ''
+        requireBackup: true
+        maxBatch: 50
