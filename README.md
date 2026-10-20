@@ -4,7 +4,10 @@
 
 扫描、筛选、备份并**安全删除**已归档会话。第三方插件，与 DeepSeek 无隶属关系。独立第三方项目，MIT。
 
-> v0.3.1 · 目标 DSH `>=0.1.0-rc.6 <0.3.0`，profile `web`
+> v0.4.0 · 目标 DSH `>=0.1.0-rc.6 <0.3.0`，profile `web`
+>
+> v0.4.0 简化删除流程：不再请求/展示删除前逐项预览，只保留「确认删除」
+> 对话框（数量、占用、勾选确认、输入 `DELETE`）；历史备份新增删除按钮。
 >
 > v0.3.1 增加失效归档清理：会话目录已被删除、但仍留在 `archivedSessionIds`
 > 里的幽灵记录会在插件加载时自动移出归档集合（只改归档标记，不删数据）；
@@ -46,10 +49,11 @@
 | 筛选 | 默认显示全部归档会话；可按标题关键词、仅空会话、仅子代理筛选 |
 | 批量勾选 | 全选 / 反选 / 单选；底部实时显示已选数量与合计体积 |
 | 单批保护 | 选择超过「单批上限」时禁用删除并提示；Host 端仍以 `batch-too-large` 兜底，报告中给出请求数 / 上限 |
+| 运行中保护 | 选中带 `live` 标记的会话时禁用删除并提示先停止会话；Host 端仍以 `live-session` 兜底 |
 | 失效归档清理 | 会话目录被删除后遗留的归档标记会在插件加载时自动清理；设置页也可手动「清理失效记录」 |
-| 删除前预览 | 数量、逐项标识与大小、警告汇总（未归档 / 无目录 / 运行中 / 有后代） |
-| 二次确认 | 勾选确认 **并输入 `DELETE`**；`requireBackup` 默认开启——自动创建并校验备份后才执行删除 |
+| 确认删除 | 不再展示逐项预览；只显示待删除数量与合计占用，勾选确认 **并输入 `DELETE`** |
 | 备份导出 | 单独「导出备份」按钮生成 `.tar.gz`（含 manifest）；「备份」页可列出并下载历史备份 |
+| 备份删除 | 历史备份行提供「删除」按钮与二次确认对话框；删除前校验 backupId，只删除备份目录 |
 | 删除后验证 | 报告逐项结果：已删除并验证 / 失败（含阶段与原因）/ 跳过（含原因） |
 | 设置 | 显式 `sessionRoot`、强制备份开关、单批上限；保存后自动重新发现存储 |
 
@@ -63,7 +67,7 @@ dsh plugin --profile web add dsh-archived-session-cleaner
 
 # 或本地打包
 npm run build && npm pack
-dsh plugin --profile web add dsh-archived-session-cleaner-0.1.0.tgz
+dsh plugin --profile web add dsh-archived-session-cleaner-0.4.0.tgz
 
 # 本地开发（不安装，--patch 直接加载）
 pnpm dsh web --patch /absolute/path/to/Archived\ Session\ Cleaner/examples/cordis.patch.local.yml
@@ -71,6 +75,10 @@ pnpm dsh web --patch /absolute/path/to/Archived\ Session\ Cleaner/examples/cordi
 
 安装后侧边栏出现归档清理器图标；点击进入完整页面。页面沿用 Harness 的
 Plugins/Settings 页面规范：页头、分段选项卡、列表行、表单字段与对话框。
+
+> **升级提示**：Host 端新增/变更的 HTTP 路由不会被运行中的 Node 进程自动重新加载。
+> 升级本插件后请重启一次 DeepSeek Harness；备份页会探测删除接口，未加载时隐藏
+> 删除按钮并提示重启。
 
 **看不到侧边栏图标 / 控制台报 `loaded without registering`？** 这说明安装的
 `lib/client.js` 不是 Module Loader 格式。运行 `npm run build` 重新生成
@@ -98,9 +106,10 @@ config:
 | GET | `/storage` | 存储发现报告 |
 | POST | `/storage/refresh` | 重新发现 |
 | GET | `/sessions` | 归档会话富化列表（支持 keyword/empty/subagent/from/to/timeField/minSizeBytes 参数） |
-| POST | `/preview` | 删除前预览 `{ ids }` |
+| POST | `/preview` | 删除前数据预览 `{ ids }`（保留给 API 调用；Web UI 不再展示逐项预览） |
 | POST | `/backup` | 导出备份 `{ ids }` |
 | GET | `/backups` | 备份列表 |
+| POST | `/backups/delete` | 删除一个历史备份 `{ backupId }` |
 | GET | `/backup/<id>/download` | 备份 `.tar.gz` 下载 |
 | POST | `/delete` | 执行删除 `{ ids, force? }` |
 | POST | `/prune-orphans` | 清理已删除但仍保留归档标记的会话（只移出归档集合，不触碰数据） |
@@ -112,12 +121,12 @@ config:
 src/index.js            宿主插件：装配、设置、能力探测、存储发现缓存、删除编排
 src/storage-discovery.js 安全核心：候选根发现、结构验证、id 交叉验证、删除前复检
 src/pipeline.js          删除管线：预检 → 备份 → 注册表 → 工作区 → 物理删除 → 验证
-src/backup.js            备份导出、sha256 校验、tar.gz 打包（无第三方依赖）
+src/backup.js            备份导出、sha256 校验、tar.gz 打包、历史备份删除（无第三方依赖）
 src/enrich.js            会话富化（标题/统计/血脉/工作区）与筛选
 src/routes.js            HTTP 路由
 src/client.js            浏览器半：Module Loader 工厂 + 侧边栏图标 + React 页面
 lib/client.js            构建产物（scripts/build-lib.mjs 生成并做语法检查）
-test/                    离线测试：mock DSH 服务 + 真实磁盘布局，19 个用例
+test/                    离线测试：mock DSH 服务 + 真实磁盘布局，22 个用例
 ```
 
 依赖的公开服务：`workspaceRegistry`、`sessionQuery`、`sessionPersistence`、`webServer`、`timer`。全部惰性读取（Loader 并发挂载，apply 时 `ctx.get` 可能为 undefined），能力缺失时降级为只读，**从不阻塞原生行为**。
@@ -127,10 +136,10 @@ test/                    离线测试：mock DSH 服务 + 真实磁盘布局，1
 ## 测试
 
 ```bash
-node test/run-tests.mjs   # 21/21 通过
+node test/run-tests.mjs   # 22/22 通过
 ```
 
-覆盖：存储发现与确认（含「有结构无 id 匹配」拒绝）、列表与筛选、预览、备份与 tar.gz 下载、sha256 校验、删除 happy path 与四查验证、幂等、安全护栏（未确认 / 非归档 / live / 运行活动 / 无目录 / 目录内含子目录 / 批量上限 / 备份失败整体中止）、**备份下载路径穿越拒绝**、**归一匹配不授权删除**、**失效归档标记清理（含存储未确认时拒绝）**、**Config Standard Schema 默认值与上限**、设置驱动的存储修复路径、纯函数单测、**客户端 Module Loader 注册、`sidebar.panellist` / `main` 槽注册与各渲染分支**。
+覆盖：存储发现与确认（含「有结构无 id 匹配」拒绝）、列表与筛选、预览、备份与 tar.gz 下载、**历史备份删除与非法 backupId 拒绝**、sha256 校验、删除 happy path 与四查验证、幂等、安全护栏（未确认 / 非归档 / live / 运行活动 / 无目录 / 目录内含子目录 / 批量上限 / 备份失败整体中止）、**备份下载路径穿越拒绝**、**归一匹配不授权删除**、**失效归档标记清理（含存储未确认时拒绝）**、**Config Standard Schema 默认值与上限**、设置驱动的存储修复路径、纯函数单测、**客户端 Module Loader 注册、`sidebar.panellist` / `main` 槽注册与各渲染分支（含确认删除、备份删除、运行中保护）**。
 
 ## 已知限制
 

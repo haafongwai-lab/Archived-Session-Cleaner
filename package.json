@@ -1,6 +1,6 @@
 {
   "name": "dsh-archived-session-cleaner",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Archived Session Cleaner for DeepSeek Harness (DSH): scan, filter, back up and safely delete archived sessions.",
   "type": "module",
   "main": "src/index.js",

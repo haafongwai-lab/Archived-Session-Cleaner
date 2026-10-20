@@ -1,14 +1,17 @@
 /**
- * backup.js — 备份导出与校验（Archived Session Cleaner）
+ * backup.js — 备份导出、校验与备份清理（Archived Session Cleaner）
  *
  * 备份 = 完整会话目录副本 + manifest.json + sha256 逐文件校验。
  * 导出 = 内存中构建 tar.gz（ustar，无第三方依赖）。
- * 本模块不执行删除；删除由 pipeline.js 在备份成功后进行。
+ * 删除会话由 pipeline.js 执行；本模块只删除用户明确选中的历史备份目录。
  */
 import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, stat, writeFile, rm, lstat } from 'node:fs/promises'
 import { join, basename } from 'node:path'
+
+/** 备份目录名由 createBackup 生成：<timestamp>_<hex>。 */
+export const BACKUP_ID_RE = /^[0-9A-Za-z_-]{8,80}$/
 
 export function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex')
@@ -169,6 +172,29 @@ export async function listBackups(backupsDir) {
     }
   }
   return out.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+}
+
+/**
+ * Delete one historical backup directory by exact, validated id.
+ * Only directories directly below `backupsDir` whose generated name matches
+ * BACKUP_ID_RE can be removed; a symlink is removed as a link, not followed.
+ */
+export async function deleteBackup(backupsDir, backupId) {
+  const id = String(backupId || '')
+  if (!BACKUP_ID_RE.test(id)) return { ok: false, reason: 'invalid-backup-id' }
+  const dir = join(backupsDir, id)
+  try {
+    const info = await lstat(dir)
+    if (!info.isDirectory() || info.isSymbolicLink()) return { ok: false, reason: 'not-a-directory' }
+  } catch {
+    return { ok: false, reason: 'backup-not-found' }
+  }
+  try {
+    await rm(dir, { recursive: true, force: true })
+    return { ok: true, backupId: id }
+  } catch (e) {
+    return { ok: false, reason: 'delete-failed', message: String((e && e.message) || e) }
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -206,6 +206,31 @@ test('backup: export, list and tar.gz download', async () => {
   }
 })
 
+test('backup: delete removes one backup and validates its id', async () => {
+  const h = await harnessWith({})
+  try {
+    const created = await h.invoke('POST', '/dsh-asc/api/backup', { ids: [ULID(1)] })
+    eq(created.body.ok, true, 'backup created')
+    const backupId = created.body.backupId
+
+    const removed = await h.invoke('POST', '/dsh-asc/api/backups/delete', { backupId })
+    eq(removed.status, 200, 'delete status')
+    eq(removed.body.ok, true, 'delete ok')
+    const list = await h.invoke('GET', '/dsh-asc/api/backups')
+    assert(!list.body.items.some((b) => b.backupId === backupId), 'backup no longer listed')
+
+    const again = await h.invoke('POST', '/dsh-asc/api/backups/delete', { backupId })
+    eq(again.status, 404, 'second delete is not found')
+
+    for (const bad of ['../outside', '..%5Coutside', 'a.b']) {
+      const res = await h.invoke('POST', '/dsh-asc/api/backups/delete', { backupId: bad })
+      eq(res.status, 400, `invalid backup id rejected: ${bad}`)
+    }
+  } finally {
+    await h.cleanup()
+  }
+})
+
 test('backup download rejects traversal-shaped ids', async () => {
   const h = await harnessWith({})
   try {
@@ -544,8 +569,9 @@ test('client: registers through __ModuleLoader__ into sidebar and main', async (
       getLocale: () => ({ active: 'zh-CN' }),
       subscribe: () => () => {},
     }
+    const workspaces = { unarchiveSession: async () => {} }
     const ctx = {
-      get: (name) => (name === 'locale' ? locale : undefined),
+      get: (name) => (name === 'locale' ? locale : name === 'workspaces' ? workspaces : undefined),
       effect: (callback) => {
         const disposer = callback()
         return typeof disposer === 'function' ? disposer : () => {}
@@ -605,24 +631,35 @@ test('client: registers through __ModuleLoader__ into sidebar and main', async (
     assert(settingsText.includes('清理失效记录'), 'manual orphan cleanup action renders')
 
     const backupsText = renderWith([
-      [1, 'backups'], [15, false],
+      [1, 'backups'], [15, false], [17, true],
       [14, [{ backupId: 'b1', createdAt: Date.now(), sessionCount: 1, bytes: 2048 }]],
     ])
     assert(backupsText.includes('b1'), 'backup row renders')
     assert(backupsText.includes('下载'), 'backup download action renders')
+    assert(backupsText.includes('删除'), 'backup delete action renders')
 
-    const previewText = renderWith([
-      [4, [sampleItem]],
+    const backupUnavailableText = renderWith([
+      [1, 'backups'], [15, false], [17, false],
+      [14, [{ backupId: 'b1', createdAt: Date.now(), sessionCount: 1, bytes: 2048 }]],
+    ])
+    assert(backupUnavailableText.includes('重启一次'), 'unavailable delete route is explained')
+
+    const backupDeleteText = renderWith([
       [13, {
-        kind: 'preview', checked: true, typed: 'DELETE',
-        data: {
-          count: 1, totalBytes: 2048, storageStatus: 'confirmed',
-          items: [{ sessionId: '01HSAMPLE', sizeBytes: 2048, warnings: [] }],
-        },
+        kind: 'backup-delete',
+        backup: { backupId: 'b1', createdAt: Date.now(), sessionCount: 1, bytes: 2048 },
       }],
     ])
-    assert(previewText.includes('删除前预览'), 'preview dialog renders')
-    assert(previewText.includes('确认删除'), 'delete confirmation action renders')
+    assert(backupDeleteText.includes('删除备份'), 'backup delete dialog renders')
+    assert(backupDeleteText.includes('删除后无法恢复'), 'backup delete warning renders')
+
+    const confirmText = renderWith([
+      [4, [sampleItem]],
+      [13, { kind: 'confirm', count: 1, bytes: 2048, checked: true, typed: 'DELETE' }],
+    ])
+    assert(confirmText.includes('确认删除'), 'confirm dialog renders')
+    assert(!confirmText.includes('删除前预览'), 'preview page is gone')
+    assert(!confirmText.includes('01HSAMPLE'), 'confirm dialog does not list per-session rows')
 
     const reportText = renderWith([
       [13, {
@@ -647,6 +684,15 @@ test('client: registers through __ModuleLoader__ into sidebar and main', async (
     ])
     assert(untitledText.includes('未命名会话'), 'untitled session gets a label')
     assert(!untitledText.includes('创建 -'), 'missing createdAt is omitted')
+
+    const liveText = renderWith([
+      [2, false],
+      [4, [{ ...sampleItem, live: true }]],
+      [5, { status: 'confirmed', root: 'C:/logs', warnings: [] }],
+      [10, new Set(['01HSAMPLE'])],
+    ])
+    assert(liveText.includes('运行中的会话不能删除'), 'live selection is blocked with an explanation')
+    assert(liveText.includes('移出归档'), 'live row offers an unarchive escape hatch')
 
     const overLimitText = renderWith([
       [2, false], [4, [sampleItem]],

@@ -5,12 +5,10 @@
  * （kind: 'exact' | 'prefix'，与 dsh-unarchive 验证过的 webServer route contract 一致）。
  */
 import { join } from 'node:path'
-import { buildTarGz, collectBackupFiles, listBackups } from './backup.js'
+import { buildTarGz, collectBackupFiles, deleteBackup, listBackups, BACKUP_ID_RE } from './backup.js'
 
 const PREFIX = '/dsh-asc/api'
 const MAX_BODY_BYTES = 1024 * 1024
-/** Backup ids are generated as `<stamp>_<hex>`; anything else must never reach join(). */
-const BACKUP_ID_RE = /^[0-9A-Za-z_-]{8,80}$/
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body)
@@ -159,6 +157,27 @@ export function registerRoutes(ctx, api) {
         sendJson(res, 200, { items: await listBackups(getBackupsDir()) })
       } catch (e) {
         sendJson(res, 500, { items: [], error: String((e && e.message) || e) })
+      }
+    },
+  })
+
+  ctx.webServer.register({
+    kind: 'exact',
+    path: `${PREFIX}/backups/delete`,
+    handler: async (req, res) => {
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'method-not-allowed' })
+      try {
+        const body = await readJsonBody(req)
+        const result = await deleteBackup(getBackupsDir(), body && body.backupId)
+        if (result.ok) return sendJson(res, 200, result)
+        const status = result.reason === 'backup-not-found'
+          ? 404
+          : result.reason === 'invalid-backup-id'
+            ? 400
+            : 500
+        return sendJson(res, status, result)
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: String((e && e.message) || e) })
       }
     },
   })
